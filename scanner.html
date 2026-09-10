@@ -58,14 +58,14 @@ function hasil(text, cls) {
 function normalizeQr(raw) {
   raw = String(raw || "").trim();
 
-  // QR lama: https://web-app-anda...?id=ID001
+  // QR utama: cukup berisi ID siswa, misalnya S00000001.
+  // Tetap dukung QR lama berbentuk URL?id=S00000001.
   try {
     const u = new URL(raw);
     const id = u.searchParams.get("id");
     if (id) return id.trim();
   } catch (e) {}
 
-  // QR baru/raw: ID001
   return raw;
 }
 
@@ -106,15 +106,18 @@ function tandaBerhasil() {
 }
 
 function kirimKeInduk(id) {
-  if (!window.opener) {
+  if (!window.opener || window.opener.closed) {
     hasil(
       "❌ Scanner tidak menemukan jendela aplikasi utama.<br><br>" +
       "Buka scanner dari tombol <b>ABSEN MASUK</b> atau <b>ABSEN PULANG</b> di aplikasi.",
       "err"
     );
+    sudahScan = false;
     return;
   }
 
+  // Kirim ID saja. Nama siswa diambil oleh aplikasi/server utama
+  // berdasarkan ID yang ada di data siswa.
   window.opener.postMessage({
     type: "ABSENSI_QR",
     id: id,
@@ -125,13 +128,14 @@ function kirimKeInduk(id) {
     "✅ QR BERHASIL DIBACA<br><br>" +
     "<b>ID:</b> " + escapeHtml(id) + "<br>" +
     "<b>Tipe:</b> " + escapeHtml(tipe) +
-    "<br><br>Kembali ke aplikasi utama...",
+    "<br><br>Memproses di aplikasi utama...",
     "ok"
   );
 
+  // Beri waktu agar postMessage diterima sebelum jendela scanner ditutup.
   setTimeout(() => {
     try { window.close(); } catch(e) {}
-  }, 700);
+  }, 900);
 }
 
 function escapeHtml(v) {
@@ -190,13 +194,7 @@ function mulaiKamera() {
         return;
       }
 
-      // Jangan hentikan kamera setelah QR terbaca.
-      // Kamera tetap aktif agar bisa langsung scan siswa berikutnya.
       kirimKeInduk(id);
-      setTimeout(() => {
-        sudahScan = false;
-        hasil("📷 Kamera tetap aktif.<br><br>Silakan arahkan ke QR siswa berikutnya.");
-      }, 1200);
     },
     () => {
       // Error scan per frame sengaja diabaikan.
