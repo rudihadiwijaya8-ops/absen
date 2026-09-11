@@ -200,59 +200,171 @@ function escapeHtml(v) {
     .replace(/'/g,"&#039;");
 }
 
+async function dapatkanDaftarKamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    throw new Error("Browser tidak menyediakan enumerateDevices().");
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+
+  // Hanya perangkat video dan buang device duplikat berdasarkan deviceId.
+  const seen = new Set();
+  return devices.filter(function(d) {
+    if (d.kind !== "videoinput") return false;
+    if (!d.deviceId || seen.has(d.deviceId)) return false;
+    seen.add(d.deviceId);
+    return true;
+  });
+}
+
+function isiPilihanKamera(devices, selectedId) {
+  const select = document.getElementById("cameraDevice");
+  if (!select) return;
+
+  select.innerHTML = "";
+
+  if (!devices.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "-- Tidak ada kamera terdeteksi --";
+    select.appendChild(opt);
+    return;
+  }
+
+  devices.forEach(function(device, index) {
+    const option = document.createElement("option");
+    option.value = device.deviceId;
+
+    // Setelah izin diberikan, Chrome biasanya memberikan label asli.
+    option.textContent =
+      device.label ||
+      ("Kamera " + (index + 1) + " — perangkat video");
+
+    select.appendChild(option);
+  });
+
+  if (selectedId && devices.some(d => d.deviceId === selectedId)) {
+    select.value = selectedId;
+  }
+}
+
 async function daftarKamera() {
   const select = document.getElementById("cameraDevice");
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error("Browser tidak menyediakan akses kamera.");
   }
 
-  // Minta izin pada origin scanner ini agar deviceId dan label kamera tersedia.
-  const izin = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: false
-  });
-  izin.getTracks().forEach(t => t.stop());
+  /*
+   * PENTING:
+   * Setiap iframe GitHub melakukan izin kamera pada origin-nya sendiri.
+   * Setelah izin diberikan, kita ENUMERATE ULANG agar semua videoinput
+   * terlihat, bukan hanya kamera yang pertama kali dibuka.
+   */
+  let izin = null;
 
-  const devices = (await navigator.mediaDevices.enumerateDevices())
-    .filter(d => d.kind === "videoinput");
+  try {
+    izin = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+  } catch (err) {
+    // Coba constraint paling sederhana sebagai fallback.
+    try {
+      izin = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+    } catch (err2) {
+      const name = err2 && err2.name ? err2.name : "UnknownError";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        throw new Error(
+          "Izin kamera ditolak. Izinkan kamera untuk situs GitHub ini lalu muat ulang."
+        );
+      }
+      throw new Error(
+        "Tidak dapat membuka akses kamera (" + name + ")."
+      );
+    }
+  }
 
-  if (!devices.length) throw new Error("Tidak ada kamera yang terdeteksi.");
+  // Jangan biarkan stream izin sementara terus menggunakan kamera.
+  if (izin) {
+    izin.getTracks().forEach(function(track) {
+      try { track.stop(); } catch (e) {}
+    });
+  }
 
-  select.innerHTML = '<option value="">-- Pilih perangkat kamera --</option>';
-  devices.forEach((device, index) => {
-    const option = document.createElement("option");
-    option.value = device.deviceId;
-    option.textContent = device.label || ("Kamera terdeteksi " + (index + 1));
-    select.appendChild(option);
-  });
+  // Beri browser sedikit waktu untuk memperbarui daftar perangkat.
+  await new Promise(resolve => setTimeout(resolve, 150));
 
-  // Default slot menggunakan kamera sesuai nomor slot jika tersedia.
-  const preferred = devices[Math.min(camIndex, devices.length - 1)];
-  if (preferred) select.value = preferred.deviceId;
+  let devices = await dapatkanDaftarKamera();
+
+  /*
+   * Pada beberapa browser, enumerateDevices pertama sesudah permission
+   * belum langsung lengkap. Ulangi beberapa kali sebelum menyimpulkan
+   * bahwa hanya satu kamera yang tersedia.
+   */
+  for (let attempt = 0; attempt < 4 && devices.length < 5; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const ulang = await dapatkanDaftarKamera();
+
+    // Gunakan hasil terbaru jika jumlahnya bertambah.
+    if (ulang.length > devices.length) {
+      devices = ulang;
+    }
+  }
+
+  if (!devices.length) {
+    throw new Error(
+      "Tidak ada kamera yang terdeteksi oleh browser. Periksa izin kamera dan Windows Camera Privacy."
+    );
+  }
+
+  /*
+   * Prioritas kamera untuk slot:
+   * cam=0 -> kamera pertama
+   * cam=1 -> kamera kedua
+   * ...
+   * Jika kamera lebih sedikit dari slot, jangan mengarang deviceId baru.
+   * Slot tersebut akan memakai kamera terakhir yang tersedia.
+   */
+  const preferredIndex = Math.min(camIndex, devices.length - 1);
+  const preferred = devices[preferredIndex];
+
+  isiPilihanKamera(devices, preferred ? preferred.deviceId : "");
+
+  statusKeInduk(
+    "✅ " + devices.length + " kamera terdeteksi. Slot " +
+    (camIndex + 1) + " memilih kamera " + (preferredIndex + 1) + "."
+  );
 
   return devices;
 }
 
-async function mulaiKamera() {
-  if (!window.isSecureContext) {
-    hasil("❌ Scanner harus dibuka melalui HTTPS.", "err");
-    return;
-  }
+async function gantiKamera(deviceId) {
+  if (!deviceId) return;
 
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    hasil("❌ Browser tidak menyediakan akses kamera.", "err");
-    return;
-  }
+  const select = document.getElementById("cameraDevice");
+  if (select) select.disabled = true;
 
   try {
-    const devices = await daftarKamera();
-    const select = document.getElementById("cameraDevice");
-    const deviceId = select.value;
-    if (!deviceId) throw new Error("Pilih perangkat kamera terlebih dahulu.");
+    if (scanner) {
+      try {
+        await scanner.stop();
+      } catch (e) {}
 
-    select.disabled = true;
+      try {
+        await scanner.clear();
+      } catch (e) {}
 
-    scanner = new Html5Qrcode("reader");
+      scanner = null;
+    }
+
+    sudahScan = false;
 
     const config = {
       fps: 10,
@@ -267,10 +379,12 @@ async function mulaiKamera() {
       aspectRatio: 1.0
     };
 
+    scanner = new Html5Qrcode("reader");
+
     await scanner.start(
       { deviceId: { exact: deviceId } },
       config,
-      decodedText => {
+      function(decodedText) {
         if (sudahScan) return;
         sudahScan = true;
 
@@ -286,40 +400,130 @@ async function mulaiKamera() {
 
         kirimKeInduk(id, nama);
 
-        setTimeout(() => {
+        setTimeout(function() {
           sudahScan = false;
-          hasil("📷 Kamera tetap aktif.<br><br>Silakan arahkan ke QR siswa berikutnya.");
-        }, 1200);
+          hasil(
+            "📷 Kamera tetap aktif.<br><br>" +
+            "Silakan arahkan ke QR siswa berikutnya.",
+            ""
+          );
+        }, 900);
       },
-      () => {}
+      function() {
+        // Error decode normal; jangan menampilkan error berulang.
+      }
     );
 
-    hasil("📷 Kamera " + (camIndex + 1) + " aktif.<br><br>Arahkan kamera ke QR siswa.");
-    statusKeInduk("🟢 Kamera " + (camIndex + 1) + " aktif.");
-  } catch (err) {
-    const select = document.getElementById("cameraDevice");
+    currentStream = null;
+
     if (select) select.disabled = false;
+
+    statusKeInduk(
+      "🟢 Kamera " + (camIndex + 1) + " aktif dan siap scan."
+    );
+
     hasil(
-      "❌ KAMERA GAGAL<br><br>" +
-      "Pastikan kamera berbeda tersedia dan izin kamera diberikan.<br><br>" +
-      "<small>" + escapeHtml(err && err.message ? err.message : err) + "</small>",
+      "🟢 Kamera aktif.<br><br>" +
+      "Arahkan kamera ke QR siswa.",
+      "ok"
+    );
+  } catch (err) {
+    if (select) select.disabled = false;
+
+    const msg = err && err.message ? err.message : String(err);
+
+    statusKeInduk(
+      "❌ Kamera " + (camIndex + 1) + " gagal dibuka: " + msg
+    );
+
+    hasil(
+      "❌ Gagal membuka kamera.<br><br>" +
+      escapeHtml(msg),
       "err"
     );
-    statusKeInduk("🔴 Kamera " + (camIndex + 1) + " gagal: " +
-      (err && err.message ? err.message : err));
+
+    try {
+      if (scanner) {
+        await scanner.clear();
+      }
+    } catch (e) {}
+
+    scanner = null;
   }
 }
 
-function kembali() {
+
+async function mulaiKamera() {
+  if (!window.isSecureContext) {
+    hasil("❌ Scanner harus dibuka melalui HTTPS.", "err");
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    hasil("❌ Browser tidak menyediakan akses kamera.", "err");
+    return;
+  }
+
   try {
-    if (window.parent && window.parent !== window) return;
-    if (window.opener) {
-      window.close();
-      return;
+    // Slot berbeda diberi jeda tambahan agar permintaan permission
+    // beberapa iframe tidak terjadi pada millidetik yang sama.
+    const delay = Math.min(camIndex * 300, 1500);
+    if (delay) {
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
-  } catch(e) {}
-  history.back();
+
+    const devices = await daftarKamera();
+    const select = document.getElementById("cameraDevice");
+    const deviceId = select ? select.value : "";
+
+    if (!deviceId) {
+      throw new Error("Tidak ada perangkat kamera yang dapat dipilih.");
+    }
+
+    await gantiKamera(deviceId);
+
+    /*
+     * Jika daftar perangkat berubah (kamera USB dicabut/dipasang),
+     * perbarui dropdown tanpa menghentikan scanner yang sedang aktif.
+     */
+    if (navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener("devicechange", async function() {
+        try {
+          const oldValue = select ? select.value : "";
+          const devicesBaru = await dapatkanDaftarKamera();
+          isiPilihanKamera(devicesBaru, oldValue);
+          statusKeInduk(
+            "🔄 Daftar kamera diperbarui: " +
+            devicesBaru.length + " kamera."
+          );
+        } catch (e) {}
+      });
+    }
+
+    // Perubahan dropdown manual: pindahkan scanner ke kamera baru.
+    if (select && !select.dataset.bound) {
+      select.dataset.bound = "1";
+      select.addEventListener("change", async function() {
+        if (!this.value) return;
+        await gantiKamera(this.value);
+      });
+    }
+
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+
+    statusKeInduk(
+      "❌ Kamera " + (camIndex + 1) + " gagal: " + msg
+    );
+
+    hasil(
+      "❌ Tidak dapat memulai kamera.<br><br>" +
+      escapeHtml(msg),
+      "err"
+    );
+  }
 }
+
 
 window.addEventListener("load", mulaiKamera);
 </script>
