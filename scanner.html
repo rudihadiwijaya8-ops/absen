@@ -2,378 +2,258 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scanner QR Absensi — 5 Kamera Diagnostik</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Absensi — Panel 5 Kamera</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
-  *{box-sizing:border-box}
-  body{margin:0;font-family:Arial,sans-serif;background:#f5f7fb;color:#172033}
-  .wrap{max-width:1500px;margin:auto;padding:20px}
-  h1{margin:0 0 8px;font-size:28px}
-  .sub{color:#5b6578;margin-bottom:16px}
-  .toolbar{background:#fff;border:1px solid #d9dfeb;border-radius:14px;padding:14px;margin-bottom:16px}
-  button{border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;background:#1769d1;color:#fff;margin-right:8px}
-  button.secondary{background:#586174}
-  .diag{white-space:pre-wrap;background:#111827;color:#d1fae5;border-radius:10px;padding:12px;font:13px/1.45 Consolas,monospace;margin-top:12px;max-height:260px;overflow:auto}
-  .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
-  .card{background:#fff;border:1px solid #d9dfeb;border-radius:14px;padding:10px;min-width:0}
-  .head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}
-  .title{font-weight:800}
-  .status{font-size:12px;font-weight:700;padding:5px 7px;border-radius:7px;background:#eef2f7}
-  .status.ok{background:#dcfce7;color:#166534}
-  .status.bad{background:#fee2e2;color:#991b1b}
-  .cambox{width:100%;aspect-ratio:4/3;background:#111827;border-radius:10px;overflow:hidden;position:relative}
-  video{width:100%;height:100%;object-fit:cover;display:block}
-  .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#cbd5e1;padding:15px}
-  select{width:100%;margin:8px 0;padding:9px;border:1px solid #b9c2d0;border-radius:8px;background:#fff}
-  .small{font-size:12px;color:#687386;line-height:1.35}
-  .result{margin-top:7px;min-height:34px;font-size:13px;font-weight:700}
-  .debug{margin-top:8px;background:#f7f8fa;border-radius:8px;padding:7px;font-size:11px;white-space:pre-wrap;word-break:break-word;color:#475569}
-  @media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:600px){.grid{grid-template-columns:1fr}}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f7fb;color:#172033}
+.wrap{max-width:1500px;margin:auto;padding:16px}
+.top{background:#fff;border-radius:14px;padding:15px;box-shadow:0 3px 15px rgba(16,24,40,.08);margin-bottom:14px}
+h1{margin:0 0 5px;font-size:25px}.sub{color:#667085;font-size:14px}
+.actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+button{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer}
+.start{background:#16a34a;color:#fff}.stop{background:#dc2626;color:#fff}.detect{background:#1464d2;color:#fff}
+.mode{display:inline-block;margin-left:8px;padding:6px 9px;border-radius:7px;background:#eef2f7;font-weight:700}
+.statusbar{margin-top:10px;padding:9px 11px;background:#f8fafc;border-radius:9px;font-size:13px}
+.diag{margin-top:10px;background:#111827;color:#d1fae5;border-radius:9px;padding:10px;font:12px/1.45 Consolas,monospace;white-space:pre-wrap;max-height:150px;overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(5,minmax(210px,1fr));gap:12px}
+.card{background:#fff;border:1px solid #d9dee8;border-radius:13px;padding:9px;min-width:0}
+.head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px}
+.title{font-weight:800}.badge{font-size:11px;font-weight:700;padding:5px 6px;border-radius:6px;background:#eef2f7}
+.ok{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}
+.reader{width:100%;aspect-ratio:4/3;background:#0f172a;border-radius:9px;overflow:hidden}
+.reader video{width:100%!important;height:100%!important;object-fit:cover!important}
+.info{font-size:11px;color:#667085;margin-top:7px;min-height:30px}
+.result{font-size:12px;font-weight:700;margin-top:5px;min-height:31px;word-break:break-word}
+.debug{font:10px/1.3 Consolas,monospace;color:#475569;background:#f8fafc;border-radius:7px;padding:6px;white-space:pre-wrap;word-break:break-word;margin-top:5px}
+@media(max-width:1150px){.grid{grid-template-columns:repeat(3,minmax(210px,1fr))}}
+@media(max-width:760px){.grid{grid-template-columns:repeat(2,minmax(160px,1fr))}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>📷 Scanner QR Absensi — 5 Kamera</h1>
-  <div class="sub">Halaman ini benar-benar mencoba membuka hingga 5 kamera fisik secara bersamaan. Gunakan untuk membedakan masalah perangkat dengan masalah iframe Apps Script.</div>
-
-  <div class="toolbar">
-    <button onclick="mulaiSemua()">▶ Mulai 5 Kamera</button>
-    <button class="secondary" onclick="deteksiKamera()">🔄 Deteksi Ulang</button>
-    <button class="secondary" onclick="hentikanSemua()">⏹ Hentikan</button>
-    <div class="diag" id="diag">Menunggu pemeriksaan...</div>
+  <div class="top">
+    <h1>📷 Panel Scanner Absensi — 5 Kamera</h1>
+    <div class="sub">Panel ini dibuka sebagai <b>jendela/tab utama</b>, bukan iframe. Dengan demikian kamera GitHub tidak berada di dalam iframe Apps Script.</div>
+    <div class="actions">
+      <button class="start" id="startBtn">▶ Aktifkan 5 Kamera</button>
+      <button class="detect" id="detectBtn">🔄 Deteksi Kamera</button>
+      <button class="stop" id="stopBtn">⏹ Matikan Semua</button>
+      <span class="mode">Mode: <span id="mode">MASUK</span></span>
+    </div>
+    <div class="statusbar" id="statusbar">Menunggu perintah dari aplikasi Apps Script.</div>
+    <div class="diag" id="diag">Siap.</div>
   </div>
-
   <div class="grid" id="grid"></div>
 </div>
 
 <script>
 const params = new URLSearchParams(location.search);
-const tipe = params.get('tipe') || 'MASUK';
-const multi = params.get('multi') === '1';
+let mode = String(params.get('tipe') || 'MASUK').toUpperCase();
+if(mode !== 'PULANG') mode='MASUK';
 
-const slots = Array.from({length:5}, (_,i)=>({
-  i,
-  deviceId:'',
-  stream:null,
-  scanner:null,
-  running:false
-}));
+const slots = Array.from({length:5},(_,i)=>({i,deviceId:'',scanner:null,running:false}));
+const grid=document.getElementById('grid');
+const diag=document.getElementById('diag');
+const statusbar=document.getElementById('statusbar');
+document.getElementById('mode').textContent=mode;
 
-const grid = document.getElementById('grid');
-const diag = document.getElementById('diag');
-
-function postStatus(i, status, extra={}){
+function log(t){diag.textContent+=(diag.textContent?'\n':'')+t}
+function setStatus(i,t,kind=''){const e=document.getElementById('badge'+i);e.textContent=t;e.className='badge '+kind}
+function setDebug(i,t){document.getElementById('debug'+i).textContent=t}
+function post(type, i, extra={}){
   try{
-    window.parent.postMessage({
-      type:'SCANNER_STATUS',
-      cam:i,
-      status,
-      tipe,
-      ...extra
-    }, '*');
+    if(window.opener && !window.opener.closed){
+      window.opener.postMessage({type,cam:i,tipe:mode,...extra},'*');
+    }
+  }catch(e){}
+}
+function postControllerStatus(message){
+  try{
+    if(window.opener && !window.opener.closed)
+      window.opener.postMessage({type:'SCANNER_CONTROLLER_STATUS',tipe:mode,message},'*');
   }catch(e){}
 }
 
-function postQR(i, text){
+for(let i=0;i<5;i++){
+  const c=document.createElement('div');
+  c.className='card';
+  c.innerHTML=`
+    <div class="head">
+      <div class="title">📷 Kamera ${i+1}</div>
+      <div class="badge" id="badge${i}">Menunggu</div>
+    </div>
+    <div class="reader" id="reader${i}"></div>
+    <div class="info" id="info${i}">Menunggu kamera.</div>
+    <div class="result" id="result${i}">QR: —</div>
+    <div class="debug" id="debug${i}"></div>`;
+  grid.appendChild(c);
+}
+
+async function getPermissionState(){
   try{
-    window.parent.postMessage({
-      type:'ABSENSI_QR',
-      cam:i,
-      tipe,
-      id:text,
-      text
-    }, '*');
+    if(navigator.permissions){
+      const p=await navigator.permissions.query({name:'camera'});
+      return p.state;
+    }
   }catch(e){}
+  return 'tidak tersedia';
 }
-
-function logDiag(text){
-  diag.textContent += (diag.textContent ? '\n' : '') + text;
-}
-
-function setDiag(text){
-  diag.textContent = text;
-}
-
-function buildCards(){
-  grid.innerHTML='';
-  slots.forEach(s=>{
-    const card=document.createElement('div');
-    card.className='card';
-    card.id='card'+s.i;
-    card.innerHTML=`
-      <div class="head">
-        <div class="title">📷 Kamera ${s.i+1}</div>
-        <div class="status" id="status${s.i}">Belum aktif</div>
-      </div>
-      <div class="cambox">
-        <video id="video${s.i}" autoplay playsinline muted></video>
-        <div class="placeholder" id="ph${s.i}">Belum dijalankan</div>
-      </div>
-      <select id="select${s.i}">
-        <option value="">Pilih kamera...</option>
-      </select>
-      <div class="result" id="result${s.i}">QR: —</div>
-      <div class="small" id="info${s.i}">Menunggu kamera.</div>
-      <div class="debug" id="debug${s.i}"></div>
-    `;
-    grid.appendChild(card);
-  });
-}
-buildCards();
-
-function setStatus(i, text, ok=false, bad=false){
-  const el=document.getElementById('status'+i);
-  el.textContent=text;
-  el.className='status'+(ok?' ok':'')+(bad?' bad':'');
-}
-
-function setDebug(i, text){
-  document.getElementById('debug'+i).textContent=text;
-}
-
-async function permissionState(){
-  try{
-    if(!navigator.permissions) return 'API permissions tidak tersedia';
-    const p=await navigator.permissions.query({name:'camera'});
-    return p.state;
-  }catch(e){
-    return 'tidak dapat dibaca: '+e.name;
-  }
-}
-
-async function getDevices(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){
-    throw new Error('navigator.mediaDevices.enumerateDevices tidak tersedia');
-  }
+async function enumerateCameras(){
+  if(!navigator.mediaDevices?.enumerateDevices)
+    throw new Error('MediaDevices.enumerateDevices tidak tersedia');
   return (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
 }
+async function detectCameras(){
+  diag.textContent='';
+  log('=== DETEKSI KAMERA ===');
+  log('Origin: '+location.origin);
+  log('Secure context: '+location.isSecureContext);
+  log('Top-level: '+(window.top===window));
+  log('Permission camera: '+await getPermissionState());
 
-async function detectAfterPermission(){
-  let devices=await getDevices();
+  let ds=await enumerateCameras();
+  log('Sebelum izin: '+ds.length+' videoinput');
 
-  // Request permission once so labels/device IDs are exposed where the browser allows it.
   try{
     const tmp=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
     tmp.getTracks().forEach(t=>t.stop());
-    await new Promise(r=>setTimeout(r,300));
-    devices=await getDevices();
+    await new Promise(r=>setTimeout(r,250));
   }catch(e){
-    logDiag('getUserMedia awal: '+e.name+' — '+(e.message||''));
+    log('getUserMedia izin: '+e.name+' — '+(e.message||''));
   }
-  return devices;
+
+  ds=await enumerateCameras();
+  log('Sesudah izin: '+ds.length+' videoinput');
+  ds.forEach((d,n)=>log((n+1)+'. '+(d.label||'Kamera '+(n+1))));
+
+  for(let i=0;i<5;i++){
+    if(ds[i]){
+      slots[i].deviceId=ds[i].deviceId;
+      document.getElementById('info'+i).textContent=ds[i].label||('Kamera '+(i+1));
+    }else{
+      slots[i].deviceId='';
+      document.getElementById('info'+i).textContent='Tidak ada perangkat kamera ke-'+(i+1)+'.';
+    }
+  }
+
+  log(ds.length>=5?'🟢 5 kamera atau lebih terdeteksi.':'🟡 Terdeteksi '+ds.length+' kamera.');
+  postControllerStatus('Deteksi selesai: '+ds.length+' kamera.');
+  return ds;
 }
 
-async function deteksiKamera(){
-  setDiag('');
-  logDiag('=== DIAGNOSTIK 5 KAMERA ===');
-  logDiag('URL: '+location.href);
-  logDiag('Origin: '+location.origin);
-  logDiag('Top origin: '+(window.top===window ? location.origin : 'berbeda / iframe'));
-  logDiag('HTTPS/secureContext: '+window.isSecureContext);
-  logDiag('mediaDevices tersedia: '+!!navigator.mediaDevices);
-  logDiag('getUserMedia tersedia: '+!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
-  logDiag('Iframe: '+(window.top!==window));
-  logDiag('Permissions camera: '+await permissionState());
+async function startOne(i, deviceId){
+  const s=slots[i];
+  if(!deviceId){setStatus(i,'TIDAK ADA','bad');return false}
 
-  if(window.top!==window){
-    try{
-      const f=document.featurePolicy || document.permissionsPolicy;
-      if(f && f.allowsFeature){
-        logDiag('featurePolicy camera: '+f.allowsFeature('camera'));
-      }else{
-        logDiag('featurePolicy API tidak tersedia');
-      }
-    }catch(e){ logDiag('featurePolicy error: '+e.message); }
+  if(s.scanner){
+    try{await s.scanner.stop()}catch(e){}
+    try{s.scanner.clear()}catch(e){}
+    s.scanner=null;
   }
+  document.getElementById('reader'+i).innerHTML='';
+  document.getElementById('result'+i).textContent='QR: —';
+  setStatus(i,'MEMBUKA...');
 
   try{
-    const devices=await detectAfterPermission();
-    logDiag('Jumlah videoinput terlihat browser: '+devices.length);
+    const q=new Html5Qrcode('reader'+i);
+    s.scanner=q;
 
-    devices.forEach((d,n)=>{
-      logDiag((n+1)+'. '+(d.label||'(label kosong)')+
-        ' | deviceId='+((d.deviceId||'').slice(0,28))+
-        ' | groupId='+((d.groupId||'').slice(0,20)));
-    });
+    await q.start(
+      {deviceId:{exact:deviceId}},
+      {
+        fps:10,
+        qrbox:function(w,h){
+          const z=Math.min(w,h);
+          const q=Math.floor(z*0.62);
+          return {width:q,height:q};
+        }
+      },
+      text=>{
+        document.getElementById('result'+i).textContent='QR: '+text;
+        post('ABSENSI_QR',i,{id:String(text).trim(),text:String(text).trim()});
+      },
+      ()=>{}
+    );
 
-    slots.forEach((s,i)=>{
-      const sel=document.getElementById('select'+i);
-      sel.innerHTML='<option value="">Pilih kamera...</option>';
-      devices.forEach((d,n)=>{
-        const o=document.createElement('option');
-        o.value=d.deviceId;
-        o.textContent=(n+1)+'. '+(d.label||'Kamera '+(n+1));
-        sel.appendChild(o);
-      });
-      if(devices[i]){
-        sel.value=devices[i].deviceId;
-        s.deviceId=devices[i].deviceId;
-        document.getElementById('info'+i).textContent=
-          'Siap: '+(devices[i].label||'Kamera '+(i+1));
-      }else{
-        document.getElementById('info'+i).textContent='Tidak ada kamera ke-'+(i+1)+' yang terlihat.';
-      }
-    });
-
-    logDiag(devices.length>=5
-      ? '🟢 5+ kamera terlihat. Browser dapat melihat perangkat.'
-      : '🟡 Hanya '+devices.length+' kamera terlihat. Untuk 5 slot fisik harus ada 5 videoinput yang tersedia.');
-
-    if(devices.length){
-      await mulaiSemua();
-    }
+    s.running=true;
+    setStatus(i,'AKTIF','ok');
+    document.getElementById('info'+i).textContent='Kamera aktif.';
+    setDebug(i,'Html5Qrcode: OK\ndeviceId: '+deviceId.slice(0,35));
+    post('SCANNER_STATUS',i,{status:'AKTIF',message:'Kamera '+(i+1)+' aktif.'});
+    return true;
   }catch(e){
-    logDiag('🔴 DETEKSI GAGAL: '+e.name+' — '+(e.message||e));
+    s.running=false;
+    setStatus(i,e.name||'GAGAL','bad');
+    document.getElementById('info'+i).textContent='Gagal membuka kamera.';
+    setDebug(i,'ERROR: '+(e.name||'Unknown')+'\n'+(e.message||e));
+    post('SCANNER_STATUS',i,{status:'GAGAL',message:'Kamera '+(i+1)+' gagal: '+(e.name||'Unknown'),errorName:e.name||'',errorMessage:e.message||''});
+    return false;
   }
 }
 
-async function bukaStream(i, deviceId){
-  const s=slots[i];
-  if(s.stream){ s.stream.getTracks().forEach(t=>t.stop()); s.stream=null; }
-
-  if(!deviceId){
-    setStatus(i,'Tidak ada device',false,true);
+async function startAll(){
+  statusbar.textContent='Meminta izin dan mendeteksi kamera...';
+  const ds=await detectCameras();
+  if(!ds.length){
+    statusbar.textContent='❌ Tidak ada kamera yang terdeteksi.';
     return;
   }
 
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({
-      audio:false,
-      video:{
-        deviceId:{exact:deviceId},
-        width:{ideal:1280},
-        height:{ideal:720},
-        frameRate:{ideal:20,max:30}
-      }
-    });
-
-    s.stream=stream;
-    const video=document.getElementById('video'+i);
-    video.srcObject=stream;
-    await video.play().catch(()=>{});
-    document.getElementById('ph'+i).style.display='none';
-    const track=stream.getVideoTracks()[0];
-    const settings=track.getSettings();
-
-    setStatus(i,'AKTIF',true,false);
-    document.getElementById('info'+i).textContent=
-      (track.label||'Kamera')+' | '+(settings.width||'?')+'×'+(settings.height||'?');
-
-    setDebug(i,'getUserMedia: OK\ntrack: '+(track.label||'')+
-      '\ndeviceId: '+(settings.deviceId||'')+
-      '\ngroupId: '+(settings.groupId||''));
-    postStatus(i,'AKTIF',{label:track.label||''});
-
-    // QR scanner runs independently on this camera.
-    try{
-      const readerId='qr-reader-'+i;
-      // create hidden-ish reader host only if needed by Html5Qrcode.
-      let host=document.getElementById(readerId);
-      if(!host){
-        host=document.createElement('div');
-        host.id=readerId;
-        host.style.display='none';
-        document.body.appendChild(host);
-      }
-
-      if(s.scanner){
-        try{ await s.scanner.stop(); }catch(e){}
-        try{ s.scanner.clear(); }catch(e){}
-      }
-
-      s.scanner=new Html5Qrcode(readerId);
-      await s.scanner.start(
-        {deviceId:{exact:deviceId}},
-        {fps:10,qrbox:{width:220,height:220}},
-        decoded=>{
-          document.getElementById('result'+i).textContent='QR: '+decoded;
-          postQR(i,decoded);
-        },
-        ()=>{}
-      );
-      // Html5Qrcode creates its own video; keep our preview stream visible.
-      setDebug(i, 'getUserMedia: OK\nQR scanner: AKTIF\n'+(track.label||''));
-    }catch(qe){
-      setDebug(i,'getUserMedia: OK\nQR scanner gagal: '+qe.name+' — '+(qe.message||qe));
+  await stopAll(false);
+  let active=0;
+  for(let i=0;i<5;i++){
+    if(slots[i].deviceId){
+      const ok=await startOne(i,slots[i].deviceId);
+      if(ok) active++;
+      await new Promise(r=>setTimeout(r,250));
     }
-
-  }catch(e){
-    setStatus(i,'GAGAL',false,true);
-    document.getElementById('ph'+i).style.display='flex';
-    document.getElementById('ph'+i).textContent='❌ '+e.name+'\n'+(e.message||'');
-    document.getElementById('info'+i).textContent='Tidak dapat membuka kamera.';
-    setDebug(i,'getUserMedia GAGAL\nname: '+e.name+'\nmessage: '+(e.message||''));
-    postStatus(i,'GAGAL',{errorName:e.name,errorMessage:e.message||''});
   }
+  statusbar.textContent='📷 '+active+' / 5 kamera aktif. Mode '+mode+'.';
+  postControllerStatus(active+' / 5 kamera aktif.');
 }
 
-async function mulaiSemua(){
-  try{
-    const devices=await detectAfterPermission();
-
-    if(!devices.length){
-      logDiag('🔴 Tidak ada videoinput yang dapat digunakan.');
-      return;
-    }
-
-    for(let i=0;i<5;i++){
-      const d=devices[i];
-      if(d){
-        slots[i].deviceId=d.deviceId;
-        document.getElementById('select'+i).value=d.deviceId;
-      }
-    }
-
-    // Start sequentially with a short gap. The streams remain active together.
-    for(let i=0;i<5;i++){
-      if(slots[i].deviceId){
-        await bukaStream(i,slots[i].deviceId);
-        await new Promise(r=>setTimeout(r,250));
-      }
-    }
-
-    logDiag('Selesai mencoba 5 slot. Kamera yang AKTIF dapat berjalan bersamaan jika browser/OS mengizinkannya.');
-  }catch(e){
-    logDiag('🔴 Mulai 5 kamera gagal: '+e.name+' — '+(e.message||e));
-  }
-}
-
-async function hentikanSemua(){
+async function stopAll(notify=true){
   for(const s of slots){
     if(s.scanner){
-      try{await s.scanner.stop();}catch(e){}
-      try{s.scanner.clear();}catch(e){}
+      try{await s.scanner.stop()}catch(e){}
+      try{s.scanner.clear()}catch(e){}
       s.scanner=null;
-    }
-    if(s.stream){
-      s.stream.getTracks().forEach(t=>t.stop());
-      s.stream=null;
     }
     s.running=false;
   }
-  slots.forEach((s,i)=>{
-    setStatus(i,'Berhenti');
-    document.getElementById('ph'+i).style.display='flex';
-    document.getElementById('ph'+i).textContent='Berhenti';
-  });
-  logDiag('Semua kamera dihentikan.');
+  for(let i=0;i<5;i++)setStatus(i,'BERHENTI');
+  if(notify){
+    statusbar.textContent='⏹ Semua kamera dimatikan.';
+    postControllerStatus('Semua kamera dimatikan.');
+  }
 }
 
-slots.forEach((s,i)=>{
-  document.getElementById('select'+i).addEventListener('change',async e=>{
-    s.deviceId=e.target.value;
-    await bukaStream(i,s.deviceId);
-  });
+document.getElementById('startBtn').onclick=startAll;
+document.getElementById('detectBtn').onclick=detectCameras;
+document.getElementById('stopBtn').onclick=()=>stopAll(true);
+
+window.addEventListener('beforeunload',()=>{
+  try{
+    if(window.opener && !window.opener.closed)
+      window.opener.postMessage({type:'SCANNER_CONTROLLER_CLOSED'},'*');
+  }catch(e){}
 });
 
-navigator.mediaDevices?.addEventListener?.('devicechange',()=>{
-  logDiag('devicechange: perangkat kamera berubah. Klik Deteksi Ulang.');
+window.addEventListener('message',event=>{
+  if(!event.data)return;
+  if(event.data.type==='SET_ABSENSI_TIPE'){
+    mode=String(event.data.tipe||'MASUK').toUpperCase()==='PULANG'?'PULANG':'MASUK';
+    document.getElementById('mode').textContent=mode;
+    statusbar.textContent='Mode diubah menjadi '+mode+'.';
+  }
 });
 
 window.addEventListener('load',()=>{
-  setDiag('Halaman siap. Klik "Mulai 5 Kamera" atau "Deteksi Ulang".');
+  postControllerStatus('Panel kamera siap. Klik Aktifkan 5 Kamera.');
+  // Tidak meminta kamera otomatis; permintaan dilakukan melalui tombol pengguna.
 });
 </script>
 </body>
