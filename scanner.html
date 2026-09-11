@@ -55,29 +55,35 @@ function hasil(text, cls) {
   el.innerHTML = text;
 }
 
-function normalizeQr(raw) {
+function parseQr(raw) {
   raw = String(raw || "").trim();
 
-  // QR utama: cukup berisi ID siswa, misalnya S00000001.
-  // Tetap dukung QR lama berbentuk URL?id=S00000001.
+  // QR berbentuk URL: ...?id=ID001&nama=Ahmad%20Fauzi
   try {
     const u = new URL(raw);
-    const id = u.searchParams.get("id");
-    if (id) return id.trim();
+    const id = (u.searchParams.get("id") || "").trim();
+    const nama = (
+      u.searchParams.get("nama") ||
+      u.searchParams.get("name") ||
+      ""
+    ).trim();
+
+    if (id) return { id, nama };
   } catch (e) {}
 
-  return raw;
+  // QR mentah hanya berisi ID: ID001
+  return { id: raw, nama: "" };
 }
 
 
-function tandaBerhasil() {
+function tandaBerhasil(nama) {
   // Lampu layar berkedip
   const lampu = document.getElementById("lampuSukses");
   lampu.classList.remove("nyala");
   void lampu.offsetWidth;
   lampu.classList.add("nyala");
 
-  // Suara "beep" menggunakan Web Audio API, tanpa file audio tambahan
+  // Bunyi beep
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
@@ -103,39 +109,52 @@ function tandaBerhasil() {
       });
     }
   } catch(e) {}
+
+  // Membacakan nama siswa
+  if (nama && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+      const ucapan = new SpeechSynthesisUtterance(
+        "Absensi berhasil, " + nama
+      );
+      ucapan.lang = "id-ID";
+      ucapan.rate = 0.95;
+      ucapan.pitch = 1;
+      ucapan.volume = 1;
+      window.speechSynthesis.speak(ucapan);
+    } catch(e) {}
+  }
 }
 
-function kirimKeInduk(id) {
-  if (!window.opener || window.opener.closed) {
+function kirimKeInduk(id, nama) {
+  if (!window.opener) {
     hasil(
       "❌ Scanner tidak menemukan jendela aplikasi utama.<br><br>" +
       "Buka scanner dari tombol <b>ABSEN MASUK</b> atau <b>ABSEN PULANG</b> di aplikasi.",
       "err"
     );
-    sudahScan = false;
     return;
   }
 
-  // Kirim ID saja. Nama siswa diambil oleh aplikasi/server utama
-  // berdasarkan ID yang ada di data siswa.
   window.opener.postMessage({
     type: "ABSENSI_QR",
     id: id,
+    nama: nama,
     tipe: tipe
   }, "*");
 
+  tandaBerhasil(nama);
+
   hasil(
-    "✅ QR BERHASIL DIBACA<br><br>" +
+    "✅ ABSENSI BERHASIL<br><br>" +
+    "<b>Nama:</b> " + escapeHtml(nama || "Nama belum tersedia") + "<br>" +
     "<b>ID:</b> " + escapeHtml(id) + "<br>" +
     "<b>Tipe:</b> " + escapeHtml(tipe) +
-    "<br><br>Memproses di aplikasi utama...",
+    "<br><br>Kembali ke aplikasi utama...",
     "ok"
   );
 
-  // Beri waktu agar postMessage diterima sebelum jendela scanner ditutup.
-  setTimeout(() => {
-    try { window.close(); } catch(e) {}
-  }, 900);
+  // Scanner tetap terbuka agar siswa berikutnya bisa langsung discan.
 }
 
 function escapeHtml(v) {
@@ -186,7 +205,9 @@ function mulaiKamera() {
       if (sudahScan) return;
       sudahScan = true;
 
-      const id = normalizeQr(decodedText);
+      const dataQr = parseQr(decodedText);
+      const id = dataQr.id;
+      const nama = dataQr.nama;
 
       if (!id) {
         sudahScan = false;
@@ -194,7 +215,12 @@ function mulaiKamera() {
         return;
       }
 
-      kirimKeInduk(id);
+      // Kamera tetap aktif agar bisa langsung scan siswa berikutnya.
+      kirimKeInduk(id, nama);
+      setTimeout(() => {
+        sudahScan = false;
+        hasil("📷 Kamera tetap aktif.<br><br>Silakan arahkan ke QR siswa berikutnya.");
+      }, 1200);
     },
     () => {
       // Error scan per frame sengaja diabaikan.
