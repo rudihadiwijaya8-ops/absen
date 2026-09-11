@@ -1,474 +1,380 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
-  <title>Scanner QR Absensi — Diagnostik Kamera</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <style>
-    *{box-sizing:border-box}
-    body{margin:0;background:#0f172a;color:#fff;font-family:Arial,sans-serif}
-    .wrap{max-width:620px;margin:auto;padding:14px}
-    .box{background:#fff;color:#172033;border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.22)}
-    h1{font-size:21px;margin:0 0 5px}
-    h2{font-size:16px;margin:18px 0 8px}
-    .muted{color:#667085;font-size:13px;line-height:1.45}
-    .badge{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700;margin:3px 4px 3px 0;background:#eef2f6}
-    .ok{background:#ecfdf3!important;color:#027a48!important}
-    .err{background:#fef3f2!important;color:#b42318!important}
-    .warn{background:#fffaeb!important;color:#b54708!important}
-    .info{background:#eff8ff!important;color:#175cd3!important}
-    #reader{width:100%;margin-top:14px}
-    #hasil{margin-top:12px;padding:13px;border-radius:12px;background:#f2f4f7;word-break:break-word;line-height:1.45}
-    #diagnostic{margin-top:12px;background:#101828;color:#d0d5dd;border-radius:12px;padding:12px;font-family:Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow:auto;max-height:360px}
-    .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    button{padding:11px 14px;border:0;border-radius:10px;background:#1464d2;color:#fff;font-weight:700;cursor:pointer}
-    button.secondary{background:#475467}
-    button.danger{background:#b42318}
-    button:disabled{opacity:.55;cursor:not-allowed}
-    select{width:100%;padding:11px;border:1px solid #d0d5dd;border-radius:10px;background:#fff}
-    .device{background:#f8fafc;border:1px solid #e4e7ec;border-radius:10px;padding:9px;margin-top:6px;font-size:12px;line-height:1.4}
-    #lampuSukses{position:fixed;inset:0;pointer-events:none;display:none;background:rgba(34,197,94,.22);z-index:9999}
-    #lampuSukses.nyala{display:block;animation:flashSuccess .35s ease-in-out 2}
-    @keyframes flashSuccess{0%,100%{opacity:0}50%{opacity:1}}
-    .small{font-size:11px;color:#667085}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanner QR Absensi — 5 Kamera Diagnostik</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,sans-serif;background:#f5f7fb;color:#172033}
+  .wrap{max-width:1500px;margin:auto;padding:20px}
+  h1{margin:0 0 8px;font-size:28px}
+  .sub{color:#5b6578;margin-bottom:16px}
+  .toolbar{background:#fff;border:1px solid #d9dfeb;border-radius:14px;padding:14px;margin-bottom:16px}
+  button{border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;background:#1769d1;color:#fff;margin-right:8px}
+  button.secondary{background:#586174}
+  .diag{white-space:pre-wrap;background:#111827;color:#d1fae5;border-radius:10px;padding:12px;font:13px/1.45 Consolas,monospace;margin-top:12px;max-height:260px;overflow:auto}
+  .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+  .card{background:#fff;border:1px solid #d9dfeb;border-radius:14px;padding:10px;min-width:0}
+  .head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}
+  .title{font-weight:800}
+  .status{font-size:12px;font-weight:700;padding:5px 7px;border-radius:7px;background:#eef2f7}
+  .status.ok{background:#dcfce7;color:#166534}
+  .status.bad{background:#fee2e2;color:#991b1b}
+  .cambox{width:100%;aspect-ratio:4/3;background:#111827;border-radius:10px;overflow:hidden;position:relative}
+  video{width:100%;height:100%;object-fit:cover;display:block}
+  .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#cbd5e1;padding:15px}
+  select{width:100%;margin:8px 0;padding:9px;border:1px solid #b9c2d0;border-radius:8px;background:#fff}
+  .small{font-size:12px;color:#687386;line-height:1.35}
+  .result{margin-top:7px;min-height:34px;font-size:13px;font-weight:700}
+  .debug{margin-top:8px;background:#f7f8fa;border-radius:8px;padding:7px;font-size:11px;white-space:pre-wrap;word-break:break-word;color:#475569}
+  @media(max-width:1100px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
-<div id="lampuSukses"></div>
 <div class="wrap">
-  <div class="box">
-    <h1>📷 Scanner QR Absensi — DIAGNOSTIK</h1>
-    <div class="muted">Versi ini sengaja menampilkan penyebab kamera gagal agar kita bisa membedakan masalah izin browser, Permissions Policy, iframe Apps Script, atau perangkat kamera.</div>
+  <h1>📷 Scanner QR Absensi — 5 Kamera</h1>
+  <div class="sub">Halaman ini benar-benar mencoba membuka hingga 5 kamera fisik secara bersamaan. Gunakan untuk membedakan masalah perangkat dengan masalah iframe Apps Script.</div>
 
-    <div id="ringkas" style="margin-top:10px"></div>
-
-    <h2>1. Perangkat kamera untuk slot ini</h2>
-    <select id="cameraDevice">
-      <option value="">Mendeteksi kamera...</option>
-    </select>
-
-    <div class="row">
-      <button id="btnTes">🎥 Tes izin kamera</button>
-      <button id="btnRefresh" class="secondary">🔄 Deteksi ulang</button>
-    </div>
-
-    <h2>2. Scanner QR</h2>
-    <div id="reader"></div>
-    <div id="hasil">Menyiapkan diagnostik...</div>
-
-    <h2>3. Diagnostik lengkap</h2>
-    <div id="diagnostic">Memulai...</div>
-
-    <h2>4. Kamera yang terlihat browser</h2>
-    <div id="devices">Belum ada data.</div>
-
-    <div class="row">
-      <button onclick="location.reload()">🔄 Muat ulang scanner</button>
-      <button class="secondary" onclick="kembali()">↩ Kembali</button>
-    </div>
-    <div class="small" style="margin-top:10px">Slot kamera: <b id="slotLabel"></b> · Tipe: <b id="tipeLabel"></b></div>
+  <div class="toolbar">
+    <button onclick="mulaiSemua()">▶ Mulai 5 Kamera</button>
+    <button class="secondary" onclick="deteksiKamera()">🔄 Deteksi Ulang</button>
+    <button class="secondary" onclick="hentikanSemua()">⏹ Hentikan</button>
+    <div class="diag" id="diag">Menunggu pemeriksaan...</div>
   </div>
+
+  <div class="grid" id="grid"></div>
 </div>
 
 <script>
-'use strict';
-
-let scanner = null;
-let sudahScan = false;
-let diagnosticLines = [];
-let currentDevices = [];
-let selectedDeviceId = '';
-let deviceChangeBound = false;
-let selectChangeBound = false;
-
 const params = new URLSearchParams(location.search);
-const tipe = String(params.get('tipe') || 'MASUK').toUpperCase();
-const camIndex = Math.max(0, Number(params.get('cam') || 0));
+const tipe = params.get('tipe') || 'MASUK';
 const multi = params.get('multi') === '1';
-const parentOrigin = 'https://script.google.com';
 
-const $ = id => document.getElementById(id);
+const slots = Array.from({length:5}, (_,i)=>({
+  i,
+  deviceId:'',
+  stream:null,
+  scanner:null,
+  running:false
+}));
 
-$('slotLabel').textContent = String(camIndex + 1);
-$('tipeLabel').textContent = tipe;
+const grid = document.getElementById('grid');
+const diag = document.getElementById('diag');
 
-function now(){ return new Date().toLocaleTimeString('id-ID'); }
-
-function escapeHtml(v){
-  return String(v == null ? '' : v)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-}
-
-function logDiag(text, type){
-  const line = '[' + now() + '] ' + text;
-  diagnosticLines.push(line);
-  if (diagnosticLines.length > 120) diagnosticLines.shift();
-  $('diagnostic').textContent = diagnosticLines.join('\n');
-  console.log('[SCANNER DIAG]', text);
-}
-
-function hasil(text, cls){
-  const el = $('hasil');
-  el.className = cls || '';
-  el.innerHTML = text;
-}
-
-function ringkas(text, cls){
-  $('ringkas').innerHTML = '<span class="badge ' + (cls||'') + '">' + escapeHtml(text) + '</span>';
-}
-
-function statusKeInduk(message, extra){
-  const payload = Object.assign({
-    type:'SCANNER_STATUS',
-    cam:camIndex,
-    message:message
-  }, extra || {});
-  try {
-    if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
-  } catch(e) {}
-  try {
-    if (window.opener) window.opener.postMessage(payload, '*');
-  } catch(e) {}
-}
-
-function kirimKeInduk(id,nama){
-  const payload={type:'ABSENSI_QR',id:id,nama:nama,tipe:tipe,cam:camIndex};
-  let sent=false;
-  try{if(window.parent && window.parent!==window){window.parent.postMessage(payload,'*');sent=true;}}catch(e){}
-  if(!sent){try{if(window.opener){window.opener.postMessage(payload,'*');sent=true;}}catch(e){}}
-  if(!sent){hasil('❌ Scanner tidak terhubung ke aplikasi utama.','err');return false;}
-  tandaBerhasil(nama);
-  return true;
-}
-
-function parseQr(raw){
-  raw=String(raw||'').trim();
+function postStatus(i, status, extra={}){
   try{
-    const u=new URL(raw);
-    const id=(u.searchParams.get('id')||'').trim();
-    const nama=(u.searchParams.get('nama')||u.searchParams.get('name')||'').trim();
-    if(id)return{id,nama};
+    window.parent.postMessage({
+      type:'SCANNER_STATUS',
+      cam:i,
+      status,
+      tipe,
+      ...extra
+    }, '*');
   }catch(e){}
-  return{id:raw,nama:''};
 }
 
-function tandaBerhasil(nama){
-  const lampu=$('lampuSukses');
-  lampu.classList.remove('nyala'); void lampu.offsetWidth; lampu.classList.add('nyala');
+function postQR(i, text){
   try{
-    const AudioCtx=window.AudioContext||window.webkitAudioContext;
-    if(AudioCtx){const ctx=new AudioCtx();const osc=ctx.createOscillator();const gain=ctx.createGain();osc.type='sine';osc.frequency.setValueAtTime(880,ctx.currentTime);osc.frequency.setValueAtTime(1320,ctx.currentTime+.10);gain.gain.setValueAtTime(.0001,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.01);gain.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+.20);osc.connect(gain);gain.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.21);osc.addEventListener('ended',()=>{try{ctx.close()}catch(e){}})}}
+    window.parent.postMessage({
+      type:'ABSENSI_QR',
+      cam:i,
+      tipe,
+      id:text,
+      text
+    }, '*');
   }catch(e){}
-  if(nama && 'speechSynthesis' in window){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('Absensi berhasil, '+nama);u.lang='id-ID';u.rate=.95;speechSynthesis.speak(u)}catch(e){}}
 }
 
-function getPolicyObject(){
-  return document.permissionsPolicy || document.featurePolicy || null;
+function logDiag(text){
+  diag.textContent += (diag.textContent ? '\n' : '') + text;
 }
 
-function policyAllows(feature){
-  try{
-    const p=getPolicyObject();
-    if(!p)return {known:false,value:null};
-    if(typeof p.allowsFeature==='function') return {known:true,value:p.allowsFeature(feature)};
-    if(typeof p.allowedFeatures==='function') return {known:true,value:p.allowedFeatures().includes(feature)};
-  }catch(e){return {known:false,value:null,error:e.message};}
-  return {known:false,value:null};
+function setDiag(text){
+  diag.textContent = text;
 }
 
-async function queryPermission(){
-  if(!navigator.permissions || !navigator.permissions.query) return {supported:false};
-  try{
-    const p=await navigator.permissions.query({name:'camera'});
-    return {supported:true,state:p.state};
-  }catch(e){return {supported:false,error:e.name+': '+e.message};}
-}
-
-function getContextInfo(){
-  const policy=policyAllows('camera');
-  return {
-    href:location.href,
-    origin:location.origin,
-    secure:window.isSecureContext,
-    topLevel:window.top===window.self,
-    inIframe:window.top!==window.self,
-    parentOrigin:(()=>{try{return document.referrer?new URL(document.referrer).origin:'(referrer kosong)'}catch(e){return '(tidak diketahui)'}})(),
-    visibility:document.visibilityState,
-    mediaDevices:!!navigator.mediaDevices,
-    getUserMedia:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),
-    enumerateDevices:!!(navigator.mediaDevices&&navigator.mediaDevices.enumerateDevices),
-    policyCameraKnown:policy.known,
-    policyCameraAllowed:policy.value
-  };
-}
-
-async function diagnoseContext(){
-  const c=getContextInfo();
-  logDiag('URL              : '+c.href);
-  logDiag('Origin            : '+c.origin);
-  logDiag('HTTPS / secure    : '+c.secure);
-  logDiag('Top-level         : '+c.topLevel);
-  logDiag('Di dalam iframe   : '+c.inIframe);
-  logDiag('Parent/referrer   : '+c.parentOrigin);
-  logDiag('Visibility        : '+c.visibility);
-  logDiag('mediaDevices      : '+c.mediaDevices);
-  logDiag('getUserMedia      : '+c.getUserMedia);
-  logDiag('enumerateDevices  : '+c.enumerateDevices);
-  logDiag('PermissionsPolicy.camera diketahui: '+c.policyCameraKnown);
-  logDiag('PermissionsPolicy.camera diizinkan: '+c.policyCameraAllowed);
-
-  if(c.inIframe && c.policyCameraKnown && c.policyCameraAllowed===false){
-    ringkas('🔴 CAMERA DIBLOKIR PERMISSIONS POLICY','err');
-    hasil('❌ <b>Kamera diblokir oleh Permissions Policy.</b><br><br>Scanner GitHub berjalan di iframe dan browser tidak mengizinkan frame ini memakai kamera. Ini bukan masalah pemilihan deviceId.','err');
-    statusKeInduk('🔴 CAMERA DIBLOKIR PERMISSIONS POLICY', {reason:'permissions-policy'});
-  } else if(!c.secure){
-    ringkas('🔴 BUKAN HTTPS','err');
-    hasil('❌ Scanner harus dibuka melalui HTTPS.','err');
-  } else if(!c.getUserMedia){
-    ringkas('🔴 getUserMedia TIDAK TERSEDIA','err');
-    hasil('❌ Browser tidak menyediakan getUserMedia().','err');
-  } else {
-    ringkas(c.inIframe ? '🟡 HTTPS + IFRAME — lanjut tes kamera' : '🟢 HTTPS + TOP-LEVEL','warn');
-  }
-
-  const perm=await queryPermission();
-  if(perm.supported) logDiag('Permission API camera: '+perm.state);
-  else logDiag('Permission API camera: tidak tersedia/ditolak query'+(perm.error?' — '+perm.error:''));
-}
-
-async function enumerateOnly(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){
-    logDiag('ENUM: enumerateDevices tidak tersedia.');
-    return [];
-  }
-  try{
-    const all=await navigator.mediaDevices.enumerateDevices();
-    const vids=[]; const seen=new Set();
-    all.forEach(d=>{if(d.kind==='videoinput' && d.deviceId && !seen.has(d.deviceId)){seen.add(d.deviceId);vids.push(d)}});
-    logDiag('ENUM: total MediaDeviceInfo = '+all.length+', videoinput unik = '+vids.length);
-    return vids;
-  }catch(e){
-    logDiag('ENUM ERROR: '+e.name+' — '+e.message);
-    return [];
-  }
-}
-
-function renderDevices(devices){
-  const box=$('devices');
-  if(!devices.length){box.innerHTML='<div class="device err"><b>0 kamera</b> terlihat oleh browser.</div>';return;}
-  box.innerHTML=devices.map((d,i)=>{
-    const label=d.label || '(label disembunyikan sebelum izin kamera)';
-    const id=d.deviceId ? d.deviceId.slice(0,18)+'…' : '(kosong)';
-    return '<div class="device"><b>Kamera '+(i+1)+'</b><br>Label: '+escapeHtml(label)+'<br>deviceId: '+escapeHtml(id)+'</div>';
-  }).join('');
-}
-
-function fillSelect(devices, preferredId){
-  const select=$('cameraDevice');
-  select.innerHTML='';
-  if(!devices.length){select.innerHTML='<option value="">-- 0 kamera terdeteksi --</option>';return;}
-  devices.forEach((d,i)=>{
-    const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||('Kamera '+(i+1)+' — perangkat video');select.appendChild(o);
+function buildCards(){
+  grid.innerHTML='';
+  slots.forEach(s=>{
+    const card=document.createElement('div');
+    card.className='card';
+    card.id='card'+s.i;
+    card.innerHTML=`
+      <div class="head">
+        <div class="title">📷 Kamera ${s.i+1}</div>
+        <div class="status" id="status${s.i}">Belum aktif</div>
+      </div>
+      <div class="cambox">
+        <video id="video${s.i}" autoplay playsinline muted></video>
+        <div class="placeholder" id="ph${s.i}">Belum dijalankan</div>
+      </div>
+      <select id="select${s.i}">
+        <option value="">Pilih kamera...</option>
+      </select>
+      <div class="result" id="result${s.i}">QR: —</div>
+      <div class="small" id="info${s.i}">Menunggu kamera.</div>
+      <div class="debug" id="debug${s.i}"></div>
+    `;
+    grid.appendChild(card);
   });
-  if(preferredId && devices.some(d=>d.deviceId===preferredId)) select.value=preferredId;
-  else select.value=devices[Math.min(camIndex,devices.length-1)].deviceId;
-  selectedDeviceId=select.value;
+}
+buildCards();
+
+function setStatus(i, text, ok=false, bad=false){
+  const el=document.getElementById('status'+i);
+  el.textContent=text;
+  el.className='status'+(ok?' ok':'')+(bad?' bad':'');
 }
 
-async function requestCameraPermissionAndEnumerate(){
-  logDiag('TES: memanggil getUserMedia({video:true,audio:false})...');
-  const started=performance.now();
-  let stream=null;
-  try{
-    stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-    const elapsed=Math.round(performance.now()-started);
-    const tracks=stream.getVideoTracks();
-    logDiag('GUM OK: stream didapat dalam '+elapsed+' ms. videoTracks='+tracks.length);
-    tracks.forEach((t,i)=>{
-      let settings={};try{settings=t.getSettings()}catch(e){}
-      logDiag('  track '+(i+1)+': label="'+(t.label||'')+'", deviceId='+(settings.deviceId||'(tidak tersedia)')+', '+(settings.width||'?')+'x'+(settings.height||'?'));
-    });
-    ringkas('🟢 getUserMedia BERHASIL','ok');
-    hasil('🟢 <b>Akses kamera berhasil.</b><br>Berikutnya browser akan mendeteksi semua kamera yang terlihat.','ok');
-    if(stream)stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
-    await new Promise(r=>setTimeout(r,200));
-    currentDevices=await enumerateOnly();
-    renderDevices(currentDevices);
-    fillSelect(currentDevices, selectedDeviceId);
-    return currentDevices;
-  }catch(e){
-    const name=e&&e.name?e.name:'UnknownError';
-    const msg=e&&e.message?e.message:String(e);
-    logDiag('GUM ERROR: name='+name);
-    logDiag('GUM ERROR: message='+msg);
-    logDiag('GUM ERROR: code='+((e&&e.code)||'(kosong)'));
+function setDebug(i, text){
+  document.getElementById('debug'+i).textContent=text;
+}
 
-    if(name==='NotAllowedError' || name==='PermissionDeniedError'){
-      const p=policyAllows('camera');
-      if(p.known && p.value===false){
-        ringkas('🔴 DIBLOKIR PERMISSIONS POLICY','err');
-        hasil('❌ <b>NotAllowedError + Permissions Policy camera=false.</b><br><br>Ini hampir pasti blokir iframe, bukan tombol izin pengguna.','err');
-        logDiag('KESIMPULAN: Permissions Policy camera=false pada dokumen ini.');
-        statusKeInduk('🔴 NotAllowedError karena Permissions Policy camera=false',{reason:'permissions-policy'});
-      }else if(window.top!==window.self){
-        ringkas('🔴 NotAllowedError DI DALAM IFRAME','err');
-        hasil('❌ <b>NotAllowedError di iframe.</b><br><br>Permissions Policy API tidak dapat memastikan penyebab, tetapi error terjadi saat iframe meminta kamera. Periksa izin GitHub dan policy iframe Apps Script.','err');
-        logDiag('KESIMPULAN: NotAllowedError di iframe; policy API tidak memberikan false secara eksplisit.');
-        statusKeInduk('🔴 NotAllowedError di iframe saat getUserMedia',{reason:'iframe-not-allowed'});
-      }else{
-        ringkas('🔴 IZIN KAMERA DITOLAK','err');
-        hasil('❌ <b>NotAllowedError.</b><br><br>Di top-level, periksa izin kamera browser/Windows untuk GitHub.','err');
-        logDiag('KESIMPULAN: NotAllowedError pada top-level.');
-      }
-    }else if(name==='NotFoundError'){
-      ringkas('🔴 TIDAK ADA KAMERA','err');
-      hasil('❌ <b>NotFoundError.</b><br><br>Browser tidak menemukan perangkat kamera yang cocok.','err');
-    }else if(name==='NotReadableError'){
-      ringkas('🔴 KAMERA SEDANG TERKUNCI','err');
-      hasil('❌ <b>NotReadableError.</b><br><br>Kamera terdeteksi tetapi tidak bisa dibuka. Tutup aplikasi lain yang memakai kamera.','err');
-    }else if(name==='OverconstrainedError'){
-      ringkas('🟠 CONSTRAINT KAMERA GAGAL','warn');
-      hasil('⚠️ <b>OverconstrainedError.</b><br><br>Coba kamera dengan constraint sederhana.','warn');
-    }else{
-      ringkas('🔴 '+name,'err');
-      hasil('❌ <b>'+escapeHtml(name)+'</b><br><br>'+escapeHtml(msg),'err');
-    }
-    return [];
-  }finally{
-    if(stream)stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
+async function permissionState(){
+  try{
+    if(!navigator.permissions) return 'API permissions tidak tersedia';
+    const p=await navigator.permissions.query({name:'camera'});
+    return p.state;
+  }catch(e){
+    return 'tidak dapat dibaca: '+e.name;
   }
 }
 
-async function deteksi(){
-  logDiag('----------------------------------------');
-  logDiag('MULAI DETEKSI SLOT '+(camIndex+1));
-  await diagnoseContext();
-
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-  const before=await enumerateOnly();
-  logDiag('Sebelum izin: '+before.length+' videoinput terlihat.');
-  renderDevices(before);
-
-  // Jika sebelumnya sudah diberi izin, label/deviceId biasanya sudah tersedia.
-  // Jika belum, lakukan request izin agar daftar perangkat bisa dibuka penuh.
-  const devices=await requestCameraPermissionAndEnumerate();
-  if(!devices.length)return;
-
-  const idx=Math.min(camIndex,devices.length-1);
-  selectedDeviceId=devices[idx].deviceId;
-  fillSelect(devices,selectedDeviceId);
-  logDiag('Slot '+(camIndex+1)+' -> memilih index '+(idx+1)+' dari '+devices.length+' kamera.');
-  statusKeInduk('🟢 '+devices.length+' kamera terdeteksi; slot '+(camIndex+1)+' memilih kamera '+(idx+1)+'.',{cameraCount:devices.length});
-
-  await startScanner(selectedDeviceId);
+async function getDevices(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){
+    throw new Error('navigator.mediaDevices.enumerateDevices tidak tersedia');
+  }
+  return (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
 }
 
-async function startScanner(deviceId){
-  if(!deviceId){hasil('❌ Tidak ada deviceId untuk scanner.','err');return;}
-  if(typeof Html5Qrcode==='undefined'){
-    hasil('❌ Library Html5Qrcode belum termuat.','err');
-    logDiag('Html5Qrcode undefined.');
+async function detectAfterPermission(){
+  let devices=await getDevices();
+
+  // Request permission once so labels/device IDs are exposed where the browser allows it.
+  try{
+    const tmp=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    tmp.getTracks().forEach(t=>t.stop());
+    await new Promise(r=>setTimeout(r,300));
+    devices=await getDevices();
+  }catch(e){
+    logDiag('getUserMedia awal: '+e.name+' — '+(e.message||''));
+  }
+  return devices;
+}
+
+async function deteksiKamera(){
+  setDiag('');
+  logDiag('=== DIAGNOSTIK 5 KAMERA ===');
+  logDiag('URL: '+location.href);
+  logDiag('Origin: '+location.origin);
+  logDiag('Top origin: '+(window.top===window ? location.origin : 'berbeda / iframe'));
+  logDiag('HTTPS/secureContext: '+window.isSecureContext);
+  logDiag('mediaDevices tersedia: '+!!navigator.mediaDevices);
+  logDiag('getUserMedia tersedia: '+!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+  logDiag('Iframe: '+(window.top!==window));
+  logDiag('Permissions camera: '+await permissionState());
+
+  if(window.top!==window){
+    try{
+      const f=document.featurePolicy || document.permissionsPolicy;
+      if(f && f.allowsFeature){
+        logDiag('featurePolicy camera: '+f.allowsFeature('camera'));
+      }else{
+        logDiag('featurePolicy API tidak tersedia');
+      }
+    }catch(e){ logDiag('featurePolicy error: '+e.message); }
+  }
+
+  try{
+    const devices=await detectAfterPermission();
+    logDiag('Jumlah videoinput terlihat browser: '+devices.length);
+
+    devices.forEach((d,n)=>{
+      logDiag((n+1)+'. '+(d.label||'(label kosong)')+
+        ' | deviceId='+((d.deviceId||'').slice(0,28))+
+        ' | groupId='+((d.groupId||'').slice(0,20)));
+    });
+
+    slots.forEach((s,i)=>{
+      const sel=document.getElementById('select'+i);
+      sel.innerHTML='<option value="">Pilih kamera...</option>';
+      devices.forEach((d,n)=>{
+        const o=document.createElement('option');
+        o.value=d.deviceId;
+        o.textContent=(n+1)+'. '+(d.label||'Kamera '+(n+1));
+        sel.appendChild(o);
+      });
+      if(devices[i]){
+        sel.value=devices[i].deviceId;
+        s.deviceId=devices[i].deviceId;
+        document.getElementById('info'+i).textContent=
+          'Siap: '+(devices[i].label||'Kamera '+(i+1));
+      }else{
+        document.getElementById('info'+i).textContent='Tidak ada kamera ke-'+(i+1)+' yang terlihat.';
+      }
+    });
+
+    logDiag(devices.length>=5
+      ? '🟢 5+ kamera terlihat. Browser dapat melihat perangkat.'
+      : '🟡 Hanya '+devices.length+' kamera terlihat. Untuk 5 slot fisik harus ada 5 videoinput yang tersedia.');
+
+    if(devices.length){
+      await mulaiSemua();
+    }
+  }catch(e){
+    logDiag('🔴 DETEKSI GAGAL: '+e.name+' — '+(e.message||e));
+  }
+}
+
+async function bukaStream(i, deviceId){
+  const s=slots[i];
+  if(s.stream){ s.stream.getTracks().forEach(t=>t.stop()); s.stream=null; }
+
+  if(!deviceId){
+    setStatus(i,'Tidak ada device',false,true);
     return;
   }
 
-  const select=$('cameraDevice');
-  select.disabled=true;
   try{
-    if(scanner){try{await scanner.stop()}catch(e){}try{await scanner.clear()}catch(e){}scanner=null;}
-    sudahScan=false;
-    scanner=new Html5Qrcode('reader');
-    logDiag('QR: memulai Html5Qrcode dengan deviceId yang dipilih...');
-
-    const config={
-      fps:10,
-      qrbox:(w,h)=>{const s=Math.min(Math.floor(w*.75),Math.floor(h*.75),300);return{width:s,height:s}},
-      aspectRatio:1.0
-    };
-
-    await scanner.start({deviceId:{exact:deviceId}},config,decodedText=>{
-      if(sudahScan)return;
-      sudahScan=true;
-      const q=parseQr(decodedText);
-      if(!q.id){sudahScan=false;hasil('❌ QR kosong/tidak valid.','err');return;}
-      logDiag('QR TERBACA: '+q.id+' | nama='+q.nama);
-      const sent=kirimKeInduk(q.id,q.nama);
-      if(sent){
-        hasil('✅ <b>QR TERBACA</b><br><br><b>Nama:</b> '+escapeHtml(q.nama||'Nama dari server')+'<br><b>ID:</b> '+escapeHtml(q.id)+'<br><b>Tipe:</b> '+escapeHtml(tipe)+'<br><br>📷 Kamera tetap aktif.','ok');
-        setTimeout(()=>{sudahScan=false;hasil('📷 Kamera tetap aktif.<br><br>Silakan arahkan ke QR siswa berikutnya.','')},900);
-      }else{sudahScan=false;}
-    },()=>{});
-
-    select.disabled=false;
-    ringkas('🟢 KAMERA '+(camIndex+1)+' AKTIF','ok');
-    hasil('🟢 <b>Kamera aktif dan siap scan.</b><br><br>Arahkan kamera ke QR siswa.','ok');
-    logDiag('QR: Html5Qrcode START berhasil.');
-    statusKeInduk('🟢 Kamera '+(camIndex+1)+' aktif dan siap scan.');
-  }catch(e){
-    select.disabled=false;
-    const name=e&&e.name?e.name:'UnknownError';
-    const msg=e&&e.message?e.message:String(e);
-    logDiag('QR START ERROR: '+name+' — '+msg);
-    hasil('❌ <b>QR scanner gagal dimulai.</b><br><br>'+escapeHtml(name+': '+msg),'err');
-    statusKeInduk('❌ Kamera '+(camIndex+1)+' gagal memulai QR: '+name+' — '+msg,{reason:'qr-start'});
-    try{if(scanner)await scanner.clear()}catch(x){}
-    scanner=null;
-  }
-}
-
-async function bindControls(){
-  if(!selectChangeBound){
-    selectChangeBound=true;
-    $('cameraDevice').addEventListener('change',async function(){
-      selectedDeviceId=this.value;
-      logDiag('Pengguna memilih deviceId baru dari dropdown.');
-      await startScanner(selectedDeviceId);
+    const stream=await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{
+        deviceId:{exact:deviceId},
+        width:{ideal:1280},
+        height:{ideal:720},
+        frameRate:{ideal:20,max:30}
+      }
     });
+
+    s.stream=stream;
+    const video=document.getElementById('video'+i);
+    video.srcObject=stream;
+    await video.play().catch(()=>{});
+    document.getElementById('ph'+i).style.display='none';
+    const track=stream.getVideoTracks()[0];
+    const settings=track.getSettings();
+
+    setStatus(i,'AKTIF',true,false);
+    document.getElementById('info'+i).textContent=
+      (track.label||'Kamera')+' | '+(settings.width||'?')+'×'+(settings.height||'?');
+
+    setDebug(i,'getUserMedia: OK\ntrack: '+(track.label||'')+
+      '\ndeviceId: '+(settings.deviceId||'')+
+      '\ngroupId: '+(settings.groupId||''));
+    postStatus(i,'AKTIF',{label:track.label||''});
+
+    // QR scanner runs independently on this camera.
+    try{
+      const readerId='qr-reader-'+i;
+      // create hidden-ish reader host only if needed by Html5Qrcode.
+      let host=document.getElementById(readerId);
+      if(!host){
+        host=document.createElement('div');
+        host.id=readerId;
+        host.style.display='none';
+        document.body.appendChild(host);
+      }
+
+      if(s.scanner){
+        try{ await s.scanner.stop(); }catch(e){}
+        try{ s.scanner.clear(); }catch(e){}
+      }
+
+      s.scanner=new Html5Qrcode(readerId);
+      await s.scanner.start(
+        {deviceId:{exact:deviceId}},
+        {fps:10,qrbox:{width:220,height:220}},
+        decoded=>{
+          document.getElementById('result'+i).textContent='QR: '+decoded;
+          postQR(i,decoded);
+        },
+        ()=>{}
+      );
+      // Html5Qrcode creates its own video; keep our preview stream visible.
+      setDebug(i, 'getUserMedia: OK\nQR scanner: AKTIF\n'+(track.label||''));
+    }catch(qe){
+      setDebug(i,'getUserMedia: OK\nQR scanner gagal: '+qe.name+' — '+(qe.message||qe));
+    }
+
+  }catch(e){
+    setStatus(i,'GAGAL',false,true);
+    document.getElementById('ph'+i).style.display='flex';
+    document.getElementById('ph'+i).textContent='❌ '+e.name+'\n'+(e.message||'');
+    document.getElementById('info'+i).textContent='Tidak dapat membuka kamera.';
+    setDebug(i,'getUserMedia GAGAL\nname: '+e.name+'\nmessage: '+(e.message||''));
+    postStatus(i,'GAGAL',{errorName:e.name,errorMessage:e.message||''});
   }
-  $('btnTes').addEventListener('click',async function(){
-    this.disabled=true;
-    logDiag('TOMBOL TES IZIN diklik oleh pengguna.');
-    await requestCameraPermissionAndEnumerate();
-    this.disabled=false;
-  });
-  $('btnRefresh').addEventListener('click',async function(){
-    this.disabled=true;
-    logDiag('TOMBOL DETEKSI ULANG diklik.');
-    const devices=await enumerateOnly();
-    currentDevices=devices;renderDevices(devices);fillSelect(devices,selectedDeviceId);
-    this.disabled=false;
-  });
 }
 
-function bindDeviceChange(){
-  if(deviceChangeBound || !navigator.mediaDevices || !navigator.mediaDevices.addEventListener)return;
-  deviceChangeBound=true;
-  navigator.mediaDevices.addEventListener('devicechange',async()=>{
-    logDiag('DEVICECHANGE: daftar perangkat berubah.');
-    const devices=await enumerateOnly();currentDevices=devices;renderDevices(devices);fillSelect(devices,selectedDeviceId);
-    statusKeInduk('🔄 Daftar kamera berubah: '+devices.length+' kamera.',{cameraCount:devices.length});
+async function mulaiSemua(){
+  try{
+    const devices=await detectAfterPermission();
+
+    if(!devices.length){
+      logDiag('🔴 Tidak ada videoinput yang dapat digunakan.');
+      return;
+    }
+
+    for(let i=0;i<5;i++){
+      const d=devices[i];
+      if(d){
+        slots[i].deviceId=d.deviceId;
+        document.getElementById('select'+i).value=d.deviceId;
+      }
+    }
+
+    // Start sequentially with a short gap. The streams remain active together.
+    for(let i=0;i<5;i++){
+      if(slots[i].deviceId){
+        await bukaStream(i,slots[i].deviceId);
+        await new Promise(r=>setTimeout(r,250));
+      }
+    }
+
+    logDiag('Selesai mencoba 5 slot. Kamera yang AKTIF dapat berjalan bersamaan jika browser/OS mengizinkannya.');
+  }catch(e){
+    logDiag('🔴 Mulai 5 kamera gagal: '+e.name+' — '+(e.message||e));
+  }
+}
+
+async function hentikanSemua(){
+  for(const s of slots){
+    if(s.scanner){
+      try{await s.scanner.stop();}catch(e){}
+      try{s.scanner.clear();}catch(e){}
+      s.scanner=null;
+    }
+    if(s.stream){
+      s.stream.getTracks().forEach(t=>t.stop());
+      s.stream=null;
+    }
+    s.running=false;
+  }
+  slots.forEach((s,i)=>{
+    setStatus(i,'Berhenti');
+    document.getElementById('ph'+i).style.display='flex';
+    document.getElementById('ph'+i).textContent='Berhenti';
   });
+  logDiag('Semua kamera dihentikan.');
 }
 
-function kembali(){
-  try{if(window.opener){window.close();return}}catch(e){}
-  try{if(history.length>1){history.back();return}}catch(e){}
-}
+slots.forEach((s,i)=>{
+  document.getElementById('select'+i).addEventListener('change',async e=>{
+    s.deviceId=e.target.value;
+    await bukaStream(i,s.deviceId);
+  });
+});
 
-window.addEventListener('error',e=>logDiag('WINDOW ERROR: '+(e.message||e.error||'unknown')));
-window.addEventListener('unhandledrejection',e=>logDiag('UNHANDLED PROMISE: '+(e.reason&&e.reason.message?e.reason.message:String(e.reason))));
+navigator.mediaDevices?.addEventListener?.('devicechange',()=>{
+  logDiag('devicechange: perangkat kamera berubah. Klik Deteksi Ulang.');
+});
 
-(async function(){
-  logDiag('=== SCANNER GITHUB DIAGNOSTIK 5 KAMERA ===');
-  logDiag('Parameter: cam='+camIndex+', tipe='+tipe+', multi='+multi);
-  logDiag('Browser UA: '+navigator.userAgent);
-  await bindControls();
-  bindDeviceChange();
-  await deteksi();
-})();
+window.addEventListener('load',()=>{
+  setDiag('Halaman siap. Klik "Mulai 5 Kamera" atau "Deteksi Ulang".');
+});
 </script>
 </body>
 </html>
