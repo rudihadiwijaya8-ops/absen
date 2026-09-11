@@ -32,7 +32,14 @@
 <div class="wrap">
   <div class="box">
     <h1>📷 Scanner QR Absensi</h1>
-    <div class="muted">Arahkan kamera ke QR siswa.</div>
+    <div class="muted">Pilih perangkat kamera untuk slot ini, lalu arahkan kamera ke QR siswa.</div>
+
+    <div style="margin-top:14px;text-align:left">
+      <label for="cameraDevice" style="display:block;font-weight:700;font-size:13px;margin-bottom:6px">Perangkat kamera</label>
+      <select id="cameraDevice" style="width:100%;padding:11px;border:1px solid #d0d5dd;border-radius:10px;background:#fff">
+        <option value="">Mendeteksi kamera...</option>
+      </select>
+    </div>
 
     <div id="reader"></div>
     <div id="hasil">Meminta akses kamera...</div>
@@ -193,15 +200,37 @@ function escapeHtml(v) {
     .replace(/'/g,"&#039;");
 }
 
-async function pilihDeviceKamera() {
-  let devices = await navigator.mediaDevices.enumerateDevices();
-  let cams = devices.filter(d => d.kind === "videoinput");
+async function daftarKamera() {
+  const select = document.getElementById("cameraDevice");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error("Browser tidak menyediakan akses kamera.");
+  }
 
-  // Label kamera sering kosong sebelum permission diberikan.
-  if (!cams.length) throw new Error("Tidak ada kamera yang terdeteksi.");
+  // Minta izin pada origin scanner ini agar deviceId dan label kamera tersedia.
+  const izin = await navigator.mediaDevices.getUserMedia({
+    video: true,
+    audio: false
+  });
+  izin.getTracks().forEach(t => t.stop());
 
-  // Jika index diminta tersedia, gunakan kamera tersebut.
-  return cams[Math.min(camIndex, cams.length - 1)].deviceId;
+  const devices = (await navigator.mediaDevices.enumerateDevices())
+    .filter(d => d.kind === "videoinput");
+
+  if (!devices.length) throw new Error("Tidak ada kamera yang terdeteksi.");
+
+  select.innerHTML = '<option value="">-- Pilih perangkat kamera --</option>';
+  devices.forEach((device, index) => {
+    const option = document.createElement("option");
+    option.value = device.deviceId;
+    option.textContent = device.label || ("Kamera terdeteksi " + (index + 1));
+    select.appendChild(option);
+  });
+
+  // Default slot menggunakan kamera sesuai nomor slot jika tersedia.
+  const preferred = devices[Math.min(camIndex, devices.length - 1)];
+  if (preferred) select.value = preferred.deviceId;
+
+  return devices;
 }
 
 async function mulaiKamera() {
@@ -216,15 +245,12 @@ async function mulaiKamera() {
   }
 
   try {
-    // Minta izin dulu agar daftar deviceId/label tersedia.
-    const izin = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: false
-    });
+    const devices = await daftarKamera();
+    const select = document.getElementById("cameraDevice");
+    const deviceId = select.value;
+    if (!deviceId) throw new Error("Pilih perangkat kamera terlebih dahulu.");
 
-    izin.getTracks().forEach(t => t.stop());
-
-    const deviceId = await pilihDeviceKamera();
+    select.disabled = true;
 
     scanner = new Html5Qrcode("reader");
 
@@ -271,6 +297,8 @@ async function mulaiKamera() {
     hasil("📷 Kamera " + (camIndex + 1) + " aktif.<br><br>Arahkan kamera ke QR siswa.");
     statusKeInduk("🟢 Kamera " + (camIndex + 1) + " aktif.");
   } catch (err) {
+    const select = document.getElementById("cameraDevice");
+    if (select) select.disabled = false;
     hasil(
       "❌ KAMERA GAGAL<br><br>" +
       "Pastikan kamera berbeda tersedia dan izin kamera diberikan.<br><br>" +
