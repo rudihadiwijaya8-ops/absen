@@ -37,7 +37,7 @@
     <div id="reader"></div>
     <div id="hasil">Meminta akses kamera...</div>
 
-    <button onclick="location.reload()">🔄 Ulangi Scanner</button>
+    <button onclick="location.reload()">🔄 Mulai Ulang Kamera</button>
     <button onclick="kembali()">↩ Kembali</button>
   </div>
 </div>
@@ -154,7 +154,8 @@ function kirimKeInduk(id, nama) {
     "ok"
   );
 
-  // Scanner tetap terbuka agar siswa berikutnya bisa langsung discan.
+  // JANGAN menutup jendela scanner.
+  // Kamera harus tetap aktif untuk siswa berikutnya.
 }
 
 function escapeHtml(v) {
