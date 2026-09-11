@@ -37,7 +37,7 @@
     <div id="reader"></div>
     <div id="hasil">Meminta akses kamera...</div>
 
-    <button onclick="location.reload()">🔄 Mulai Ulang Kamera</button>
+    <button onclick="location.reload()">🔄 Ulangi Scanner</button>
     <button onclick="kembali()">↩ Kembali</button>
   </div>
 </div>
@@ -45,9 +45,12 @@
 <script>
 let scanner = null;
 let sudahScan = false;
+let currentStream = null;
 
 const params = new URLSearchParams(location.search);
 const tipe = String(params.get("tipe") || "MASUK").toUpperCase();
+const camIndex = Math.max(0, Number(params.get("cam") || 0));
+const multi = params.get("multi") === "1";
 
 function hasil(text, cls) {
   const el = document.getElementById("hasil");
@@ -55,10 +58,28 @@ function hasil(text, cls) {
   el.innerHTML = text;
 }
 
+function statusKeInduk(message) {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: "SCANNER_STATUS",
+        cam: camIndex,
+        message: message
+      }, "*");
+    }
+    if (window.opener) {
+      window.opener.postMessage({
+        type: "SCANNER_STATUS",
+        cam: camIndex,
+        message: message
+      }, "*");
+    }
+  } catch(e) {}
+}
+
 function parseQr(raw) {
   raw = String(raw || "").trim();
 
-  // QR berbentuk URL: ...?id=ID001&nama=Ahmad%20Fauzi
   try {
     const u = new URL(raw);
     const id = (u.searchParams.get("id") || "").trim();
@@ -71,19 +92,15 @@ function parseQr(raw) {
     if (id) return { id, nama };
   } catch (e) {}
 
-  // QR mentah hanya berisi ID: ID001
   return { id: raw, nama: "" };
 }
 
-
 function tandaBerhasil(nama) {
-  // Lampu layar berkedip
   const lampu = document.getElementById("lampuSukses");
   lampu.classList.remove("nyala");
   void lampu.offsetWidth;
   lampu.classList.add("nyala");
 
-  // Bunyi beep
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (AudioCtx) {
@@ -103,14 +120,10 @@ function tandaBerhasil(nama) {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.21);
-
-      osc.addEventListener("ended", () => {
-        try { ctx.close(); } catch(e) {}
-      });
+      osc.addEventListener("ended", () => { try { ctx.close(); } catch(e) {} });
     }
   } catch(e) {}
 
-  // Membacakan nama siswa
   if (nama && "speechSynthesis" in window) {
     try {
       window.speechSynthesis.cancel();
@@ -127,35 +140,48 @@ function tandaBerhasil(nama) {
 }
 
 function kirimKeInduk(id, nama) {
-  if (!window.opener) {
-    hasil(
-      "❌ Scanner tidak menemukan jendela aplikasi utama.<br><br>" +
-      "Buka scanner dari tombol <b>ABSEN MASUK</b> atau <b>ABSEN PULANG</b> di aplikasi.",
-      "err"
-    );
-    return;
-  }
-
-  window.opener.postMessage({
+  const payload = {
     type: "ABSENSI_QR",
     id: id,
     nama: nama,
-    tipe: tipe
-  }, "*");
+    tipe: tipe,
+    cam: camIndex
+  };
+
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(payload, "*");
+    } else if (window.opener) {
+      window.opener.postMessage(payload, "*");
+    } else {
+      hasil(
+        "❌ Scanner tidak terhubung ke aplikasi utama.",
+        "err"
+      );
+      return;
+    }
+  } catch(e) {
+    hasil("❌ Gagal mengirim hasil scan ke aplikasi utama.", "err");
+    return;
+  }
 
   tandaBerhasil(nama);
 
   hasil(
-    "✅ ABSENSI BERHASIL<br><br>" +
-    "<b>Nama:</b> " + escapeHtml(nama || "Nama belum tersedia") + "<br>" +
+    "✅ QR TERBACA<br><br>" +
+    "<b>Nama:</b> " + escapeHtml(nama || "Nama dari server") + "<br>" +
     "<b>ID:</b> " + escapeHtml(id) + "<br>" +
     "<b>Tipe:</b> " + escapeHtml(tipe) +
-    "<br><br>Kembali ke aplikasi utama...",
+    "<br><br>📷 Kamera tetap aktif.",
     "ok"
   );
 
-  // JANGAN menutup jendela scanner.
-  // Kamera harus tetap aktif untuk siswa berikutnya.
+  // Jangan window.close() pada mode multi-kamera/iframe.
+  if (!multi) {
+    setTimeout(() => {
+      try { window.close(); } catch(e) {}
+    }, 700);
+  }
 }
 
 function escapeHtml(v) {
@@ -167,83 +193,98 @@ function escapeHtml(v) {
     .replace(/'/g,"&#039;");
 }
 
-function mulaiKamera() {
+async function pilihDeviceKamera() {
+  let devices = await navigator.mediaDevices.enumerateDevices();
+  let cams = devices.filter(d => d.kind === "videoinput");
+
+  // Label kamera sering kosong sebelum permission diberikan.
+  if (!cams.length) throw new Error("Tidak ada kamera yang terdeteksi.");
+
+  // Jika index diminta tersedia, gunakan kamera tersebut.
+  return cams[Math.min(camIndex, cams.length - 1)].deviceId;
+}
+
+async function mulaiKamera() {
   if (!window.isSecureContext) {
-    hasil(
-      "❌ HALAMAN TIDAK HTTPS<br><br>" +
-      "Scanner harus dibuka melalui HTTPS. GitHub Pages menyediakan HTTPS.",
-      "err"
-    );
+    hasil("❌ Scanner harus dibuka melalui HTTPS.", "err");
     return;
   }
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    hasil(
-      "❌ Browser tidak menyediakan akses kamera.",
-      "err"
-    );
+    hasil("❌ Browser tidak menyediakan akses kamera.", "err");
     return;
   }
 
-  scanner = new Html5Qrcode("reader");
+  try {
+    // Minta izin dulu agar daftar deviceId/label tersedia.
+    const izin = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
 
-  const config = {
-    fps: 10,
-    qrbox: function(viewfinderWidth, viewfinderHeight) {
-      const size = Math.min(
-        Math.floor(viewfinderWidth * 0.75),
-        Math.floor(viewfinderHeight * 0.75),
-        300
-      );
-      return { width: size, height: size };
-    }
-  };
+    izin.getTracks().forEach(t => t.stop());
 
-  scanner.start(
-    { facingMode: "environment" },
-    config,
-    decodedText => {
-      if (sudahScan) return;
-      sudahScan = true;
+    const deviceId = await pilihDeviceKamera();
 
-      const dataQr = parseQr(decodedText);
-      const id = dataQr.id;
-      const nama = dataQr.nama;
+    scanner = new Html5Qrcode("reader");
 
-      if (!id) {
-        sudahScan = false;
-        hasil("❌ QR kosong/tidak valid.", "err");
-        return;
-      }
+    const config = {
+      fps: 10,
+      qrbox: function(viewfinderWidth, viewfinderHeight) {
+        const size = Math.min(
+          Math.floor(viewfinderWidth * 0.75),
+          Math.floor(viewfinderHeight * 0.75),
+          300
+        );
+        return { width: size, height: size };
+      },
+      aspectRatio: 1.0
+    };
 
-      // Kamera tetap aktif agar bisa langsung scan siswa berikutnya.
-      kirimKeInduk(id, nama);
-      setTimeout(() => {
-        sudahScan = false;
-        hasil("📷 Kamera tetap aktif.<br><br>Silakan arahkan ke QR siswa berikutnya.");
-      }, 1200);
-    },
-    () => {
-      // Error scan per frame sengaja diabaikan.
-    }
-  ).then(() => {
-    hasil(
-      "📷 Kamera aktif.<br><br>Arahkan kotak kamera ke QR siswa."
+    await scanner.start(
+      { deviceId: { exact: deviceId } },
+      config,
+      decodedText => {
+        if (sudahScan) return;
+        sudahScan = true;
+
+        const dataQr = parseQr(decodedText);
+        const id = dataQr.id;
+        const nama = dataQr.nama;
+
+        if (!id) {
+          sudahScan = false;
+          hasil("❌ QR kosong/tidak valid.", "err");
+          return;
+        }
+
+        kirimKeInduk(id, nama);
+
+        setTimeout(() => {
+          sudahScan = false;
+          hasil("📷 Kamera tetap aktif.<br><br>Silakan arahkan ke QR siswa berikutnya.");
+        }, 1200);
+      },
+      () => {}
     );
-  }).catch(err => {
+
+    hasil("📷 Kamera " + (camIndex + 1) + " aktif.<br><br>Arahkan kamera ke QR siswa.");
+    statusKeInduk("🟢 Kamera " + (camIndex + 1) + " aktif.");
+  } catch (err) {
     hasil(
       "❌ KAMERA GAGAL<br><br>" +
-      "1. Izinkan kamera pada browser.<br>" +
-      "2. Pastikan scanner dibuka melalui HTTPS.<br>" +
-      "3. Pastikan kamera tidak sedang digunakan aplikasi lain.<br><br>" +
-      "<small>" + escapeHtml(err) + "</small>",
+      "Pastikan kamera berbeda tersedia dan izin kamera diberikan.<br><br>" +
+      "<small>" + escapeHtml(err && err.message ? err.message : err) + "</small>",
       "err"
     );
-  });
+    statusKeInduk("🔴 Kamera " + (camIndex + 1) + " gagal: " +
+      (err && err.message ? err.message : err));
+  }
 }
 
 function kembali() {
   try {
+    if (window.parent && window.parent !== window) return;
     if (window.opener) {
       window.close();
       return;
